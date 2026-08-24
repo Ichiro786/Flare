@@ -27,6 +27,8 @@ public class LoginFlowPresenter(
 
         public fun resume(value: String)
 
+        public suspend fun resumeAndAwait(value: String): LoginResumeResult
+
         public fun canResume(value: String): Boolean
 
         public fun onExternalAuthenticationDismissed(error: String?)
@@ -65,6 +67,8 @@ public class LoginFlowPresenter(
                     handler.resume(value)
                 }
             }
+
+            override suspend fun resumeAndAwait(value: String): LoginResumeResult = handler.resumeAndAwait(value)
 
             override fun canResume(value: String): Boolean = handler.canResume(value)
 

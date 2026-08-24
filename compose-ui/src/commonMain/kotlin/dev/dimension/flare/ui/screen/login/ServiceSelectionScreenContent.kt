@@ -96,6 +96,7 @@ import dev.dimension.flare.ui.presenter.login.LoginField
 import dev.dimension.flare.ui.presenter.login.LoginFieldType
 import dev.dimension.flare.ui.presenter.login.LoginFlowPresenter
 import dev.dimension.flare.ui.presenter.login.LoginMethodSpec
+import dev.dimension.flare.ui.presenter.login.LoginResumeResult
 import dev.dimension.flare.ui.presenter.login.ReloginPresenter
 import dev.dimension.flare.ui.presenter.login.ReloginTarget
 import dev.dimension.flare.ui.theme.PlatformTheme
@@ -108,7 +109,7 @@ import org.jetbrains.compose.resources.stringResource
 
 @Composable
 public fun ServiceSelectionScreenContent(
-    onWebViewLogin: (url: String, cookieCallback: (cookies: String?) -> Boolean) -> Unit,
+    onWebViewLogin: (url: String, cookieCallback: suspend (cookies: String?) -> LoginResumeResult) -> Unit,
     onBack: (() -> Unit),
     openUri: (String) -> Unit,
     registerDeeplinkCallback: @Composable ((url: String) -> Boolean) -> Unit,
@@ -294,7 +295,7 @@ public fun ServiceSelectionScreenContent(
 @Composable
 public fun ReloginScreenContent(
     target: ReloginTarget,
-    onWebViewLogin: (url: String, cookieCallback: (cookies: String?) -> Boolean) -> Unit,
+    onWebViewLogin: (url: String, cookieCallback: suspend (cookies: String?) -> LoginResumeResult) -> Unit,
     onBack: (() -> Unit),
     openUri: (String) -> Unit,
     registerDeeplinkCallback: @Composable ((url: String) -> Boolean) -> Unit,
@@ -338,13 +339,10 @@ public fun ReloginScreenContent(
 
                 is LoginEffect.OpenWebCookieLogin -> {
                     onWebViewLogin(effect.url) { cookies ->
-                        if (cookies.isNullOrBlank()) {
-                            false
-                        } else if (!loginState.canResume(cookies)) {
-                            false
+                        if (cookies.isNullOrBlank() || !loginState.canResume(cookies)) {
+                            LoginResumeResult.NotReady
                         } else {
-                            loginState.resume(cookies)
-                            true
+                            loginState.resumeAndAwait(cookies)
                         }
                     }
                 }
@@ -421,7 +419,7 @@ private fun GenericLoginContent(
     host: String,
     methods: List<LoginMethodSpec>,
     openUri: (String) -> Unit,
-    onWebViewLogin: (url: String, cookieCallback: (cookies: String?) -> Boolean) -> Unit,
+    onWebViewLogin: (url: String, cookieCallback: suspend (cookies: String?) -> LoginResumeResult) -> Unit,
     registerDeeplinkCallback: @Composable ((url: String) -> Boolean) -> Unit,
 ) {
     if (methods.isEmpty()) return
@@ -460,13 +458,10 @@ private fun GenericLoginContent(
 
                 is LoginEffect.OpenWebCookieLogin -> {
                     onWebViewLogin(effect.url) { cookies ->
-                        if (cookies.isNullOrBlank()) {
-                            false
-                        } else if (!loginState.canResume(cookies)) {
-                            false
+                        if (cookies.isNullOrBlank() || !loginState.canResume(cookies)) {
+                            LoginResumeResult.NotReady
                         } else {
-                            loginState.resume(cookies)
-                            true
+                            loginState.resumeAndAwait(cookies)
                         }
                     }
                 }

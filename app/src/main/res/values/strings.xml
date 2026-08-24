@@ -239,6 +239,7 @@
     <string name="login_expired">Login session expired</string>
     <string name="login_expired_message">Tap to log in again</string>
     <string name="login_expired_relogin">Log in again</string>
+    <string name="x_login_continue">Continue in X</string>
 
     <string name="service_select_welcome_title">Welcome to Flare</string>
     <string name="service_select_welcome_message">Flare is a social media client for Android.\nChoose a service to connect and get started.</string>

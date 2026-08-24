@@ -10,6 +10,7 @@ import dev.dimension.flare.feature.agent.localhistory.LocalHistoryAgentTarget
 import dev.dimension.flare.model.AccountType
 import dev.dimension.flare.model.MicroBlogKey
 import dev.dimension.flare.ui.model.UiMedia
+import dev.dimension.flare.ui.presenter.login.LoginResumeResult
 import dev.dimension.flare.ui.presenter.login.ReloginTarget
 import kotlinx.collections.immutable.ImmutableMap
 import kotlinx.collections.immutable.toImmutableMap
@@ -215,7 +216,7 @@ internal sealed interface Route : NavKey {
 
         data class WebCookieLogin(
             val url: String,
-            val callback: (cookies: String?) -> Boolean,
+            val callback: suspend (cookies: String?) -> LoginResumeResult,
         ) : ServiceSelect
     }
 
