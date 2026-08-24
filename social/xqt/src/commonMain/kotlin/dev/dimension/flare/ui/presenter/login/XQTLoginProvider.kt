@@ -1,14 +1,16 @@
 package dev.dimension.flare.ui.presenter.login
 
 import dev.dimension.flare.data.datasource.xqt.userById
+import dev.dimension.flare.data.network.xqt.XQTLoginValidationResult
 import dev.dimension.flare.data.network.xqt.XQTPlatformDetector
 import dev.dimension.flare.data.network.xqt.XQTService
 import dev.dimension.flare.data.network.xqt.model.User
+import dev.dimension.flare.data.network.xqt.parseRetryAfterSeconds
 import dev.dimension.flare.data.platform.XQTCredential
 import dev.dimension.flare.data.platform.XQT_PLATFORM_ID
 import dev.dimension.flare.data.platform.XqtPlatformSpec
 import dev.dimension.flare.data.repository.AccountService
-import dev.dimension.flare.data.repository.addAccount
+import dev.dimension.flare.data.repository.addAccountAndAwait
 import dev.dimension.flare.di.koinInject
 import dev.dimension.flare.model.MicroBlogKey
 import dev.dimension.flare.model.PlatformMetadata
@@ -18,6 +20,8 @@ import dev.dimension.flare.ui.model.UiAccount
 import dev.dimension.flare.ui.model.UiInstance
 import dev.dimension.flare.ui.model.UiInstanceMetadata
 import dev.dimension.flare.ui.model.UiStrings
+import io.ktor.http.HttpHeaders
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -77,6 +81,7 @@ private class XQTWebCookieLoginHandler(
     private val accountService: AccountService by koinInject()
     private val _state = MutableStateFlow(state())
     private val _effects = MutableSharedFlow<LoginEffect>(extraBufferCapacity = 1)
+    private val resumeSingleFlight = XQTLoginSingleFlight()
 
     override val state: StateFlow<LoginFlowState> = _state
     override val effects: Flow<LoginEffect> = _effects
@@ -96,14 +101,28 @@ private class XQTWebCookieLoginHandler(
     }
 
     override suspend fun resume(value: String) {
-        _state.value = state(loading = true)
-        runCatching {
-            require(value.isNotBlank()) { "Cookie is empty" }
-            require(XQTService.checkChocolate(value)) { "Invalid cookie" }
-            xqtLoginUseCase(value)
-            context.onSuccess()
-        }.onFailure {
-            _state.value = state(error = it.message)
+        resumeSingleFlight.run {
+            _state.value = state(loading = true)
+            try {
+                if (value.isBlank()) throw XQTLoginException(XQTLoginFailure.InvalidSession)
+                if (!XQTService.checkChocolate(value)) {
+                    throw XQTLoginException(XQTLoginFailure.InvalidSession)
+                }
+                xqtLoginUseCase(value)
+                _state.value = state()
+                context.onSuccess()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                val failure =
+                    (error as? XQTLoginException)?.failure
+                        ?: XQTLoginFailure.UnsupportedResponse
+                _state.value =
+                    state(
+                        error = failure.message,
+                        failureKind = failure.kind,
+                    )
+            }
         }
     }
 
@@ -115,38 +134,87 @@ private class XQTWebCookieLoginHandler(
 
     private suspend fun xqtLoginUseCase(chocolate: String) {
         val xqtService = XQTService(flowOf(chocolate))
-        val userId = xqtService.getInitialUserId(chocolate = chocolate)
-        requireNotNull(userId)
-        val account =
-            xqtService
-                .userById(userId)
-                .body()
-                ?.data
-                ?.user
-                ?.result
-        requireNotNull(account)
-        require(account is User)
-        val accountKey =
-            MicroBlogKey(
-                id = account.restId,
-                host = xqtHost,
-            )
-        context.requireReloginAccount(accountKey)
-        accountService.addAccount(
-            UiAccount(
-                accountKey = accountKey,
-                platformId = XQT_PLATFORM_ID,
-            ),
-            credential =
-                XQTCredential(
-                    chocolate = chocolate,
+        try {
+            val userId =
+                when (val result = xqtService.getInitialUserId(chocolate = chocolate)) {
+                    is XQTLoginValidationResult.Authenticated -> {
+                        result.userId
+                    }
+
+                    XQTLoginValidationResult.NetworkUnavailable -> {
+                        throw XQTLoginException(XQTLoginFailure.NetworkUnavailable)
+                    }
+
+                    XQTLoginValidationResult.Timeout -> {
+                        throw XQTLoginException(XQTLoginFailure.Timeout)
+                    }
+
+                    XQTLoginValidationResult.XChallenge -> {
+                        throw XQTLoginException(XQTLoginFailure.XChallenge)
+                    }
+
+                    XQTLoginValidationResult.InvalidSession -> {
+                        throw XQTLoginException(XQTLoginFailure.InvalidSession)
+                    }
+
+                    is XQTLoginValidationResult.RateLimited -> {
+                        throw XQTLoginException(XQTLoginFailure.RateLimited(result.retryAfterSeconds))
+                    }
+
+                    XQTLoginValidationResult.UnsupportedResponse -> {
+                        throw XQTLoginException(XQTLoginFailure.UnsupportedResponse)
+                    }
+                }
+            val userResponse = xqtService.userById(userId)
+            when {
+                userResponse.status.value == 429 -> {
+                    throw XQTLoginException(
+                        XQTLoginFailure.RateLimited(
+                            userResponse.headers[HttpHeaders.RetryAfter].parseRetryAfterSeconds(),
+                        ),
+                    )
+                }
+
+                userResponse.status == io.ktor.http.HttpStatusCode.Unauthorized ||
+                    userResponse.status == io.ktor.http.HttpStatusCode.Forbidden -> {
+                    throw XQTLoginException(XQTLoginFailure.InvalidSession)
+                }
+            }
+            val userResponseBody =
+                userResponse.body()
+                    ?: throw XQTLoginException(XQTLoginFailure.UnsupportedResponse)
+            if (!userResponseBody.errors.isNullOrEmpty()) {
+                throw XQTLoginException(XQTLoginFailure.InvalidSession)
+            }
+            val account = userResponseBody.data.user.result
+            if (account !is User) {
+                throw XQTLoginException(XQTLoginFailure.UnsupportedResponse)
+            }
+            val accountKey =
+                MicroBlogKey(
+                    id = account.restId,
+                    host = xqtHost,
+                )
+            context.requireReloginAccount(accountKey)
+            accountService.addAccountAndAwait(
+                UiAccount(
+                    accountKey = accountKey,
+                    platformId = XQT_PLATFORM_ID,
                 ),
-        )
+                credential =
+                    XQTCredential(
+                        chocolate = chocolate,
+                    ),
+            )
+        } finally {
+            xqtService.close()
+        }
     }
 
     private fun state(
         loading: Boolean = false,
         error: String? = null,
+        failureKind: LoginFailureKind? = null,
     ): LoginFlowState =
         LoginFlowState(
             actions =
@@ -159,5 +227,6 @@ private class XQTWebCookieLoginHandler(
                 ),
             loading = loading,
             error = error,
+            failureKind = failureKind,
         )
 }

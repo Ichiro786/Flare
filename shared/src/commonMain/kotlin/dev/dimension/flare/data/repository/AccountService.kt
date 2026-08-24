@@ -25,6 +25,12 @@ public interface AccountService {
         serializer: KSerializer<T>,
     ): Job
 
+    public suspend fun <T : Any> addAccountAndAwait(
+        account: UiAccount,
+        credential: T,
+        serializer: KSerializer<T>,
+    )
+
     public fun <T : Any> credentialFlow(
         accountKey: MicroBlogKey,
         serializer: KSerializer<T>,
@@ -54,6 +60,18 @@ public inline fun <reified T : Any> AccountService.addAccount(
         credential = credential,
         serializer = serializer(),
     )
+
+@HiddenFromObjC
+public suspend inline fun <reified T : Any> AccountService.addAccountAndAwait(
+    account: UiAccount,
+    credential: T,
+) {
+    addAccountAndAwait(
+        account = account,
+        credential = credential,
+        serializer = serializer(),
+    )
+}
 
 @HiddenFromObjC
 public inline fun <reified T : Any> AccountService.credentialFlow(accountKey: MicroBlogKey): Flow<T> =
@@ -105,6 +123,18 @@ internal class RepositoryAccountService(
             credential = credential,
             serializer = serializer,
         )
+
+    override suspend fun <T : Any> addAccountAndAwait(
+        account: UiAccount,
+        credential: T,
+        serializer: KSerializer<T>,
+    ) {
+        repository.addAccountAndAwait(
+            account = account,
+            credential = credential,
+            serializer = serializer,
+        )
+    }
 
     override fun <T : Any> credentialFlow(
         accountKey: MicroBlogKey,

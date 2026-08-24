@@ -122,20 +122,24 @@ internal class XQTDataSource(
     TimelineTabConfigurationDataSource,
     DirectMessageDataSource,
     RelationDataSource,
-    PostEventHandler.Handler {
+    PostEventHandler.Handler,
+    AutoCloseable {
     private val coroutineScope: CoroutineScope by koinInject()
     private val imageCompressor: ImageCompressor by koinInject()
     private val credentialFlow by lazy {
         sourceCredentialFlow.distinctUntilChanged()
     }
-    private val service by lazy {
-        XQTService(
-            accountKey = accountKey,
-            chocolateFlow =
-                credentialFlow
-                    .map { it.chocolate },
-        )
-    }
+    private val serviceDelegate =
+        lazy {
+            XQTService(
+                accountKey = accountKey,
+                chocolateFlow =
+                    credentialFlow
+                        .map { it.chocolate },
+            )
+        }
+    private val service: XQTService
+        get() = serviceDelegate.value
     private val loader by lazy {
         XQTLoader(
             accountKey = accountKey,
@@ -153,6 +157,12 @@ internal class XQTDataSource(
             accountKey = accountKey,
             credentialFlow = credentialFlow,
         )
+    }
+
+    override fun close() {
+        if (serviceDelegate.isInitialized()) {
+            serviceDelegate.value.close()
+        }
     }
 
     override val directMessageHandler by lazy {

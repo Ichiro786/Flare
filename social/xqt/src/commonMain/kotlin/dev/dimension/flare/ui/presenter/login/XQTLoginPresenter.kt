@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.dimension.flare.data.datasource.xqt.userById
+import dev.dimension.flare.data.network.xqt.XQTLoginValidationResult
 import dev.dimension.flare.data.network.xqt.XQTService
 import dev.dimension.flare.data.network.xqt.model.User
 import dev.dimension.flare.data.platform.XQTCredential
@@ -62,8 +63,11 @@ internal class XQTLoginPresenter(
         accountService: AccountService,
     ) {
         val xqtService = XQTService(flowOf(chocolate))
-        val userId = xqtService.getInitialUserId(chocolate = chocolate)
-        requireNotNull(userId)
+        val userId =
+            when (val result = xqtService.getInitialUserId(chocolate = chocolate)) {
+                is XQTLoginValidationResult.Authenticated -> result.userId
+                else -> error("X login validation failed: ${result::class.simpleName}")
+            }
         val account =
             xqtService
                 .userById(userId)
