@@ -129,6 +129,18 @@ internal class AccountRepository internal constructor(
         credential: T,
         serializer: KSerializer<T>,
     ) = coroutineScope.launch {
+        addAccountAndAwait(
+            account = account,
+            credential = credential,
+            serializer = serializer,
+        )
+    }
+
+    internal suspend fun <T : Any> addAccountAndAwait(
+        account: UiAccount,
+        credential: T,
+        serializer: KSerializer<T>,
+    ) {
         val existingAccount = appDatabase.accountDao().getAccount(account.accountKey)
         val credentialJson = credential.encodeJson(serializer)
         val dbAccount =

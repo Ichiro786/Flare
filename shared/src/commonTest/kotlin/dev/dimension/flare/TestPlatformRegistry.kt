@@ -67,6 +67,12 @@ internal fun unavailableAccountService(): AccountService =
             serializer: KSerializer<T>,
         ): Job = error("Account service is not available in this test")
 
+        override suspend fun <T : Any> addAccountAndAwait(
+            account: UiAccount,
+            credential: T,
+            serializer: KSerializer<T>,
+        ): Unit = error("Account service is not available in this test")
+
         override fun <T : Any> credentialFlow(
             accountKey: MicroBlogKey,
             serializer: KSerializer<T>,

@@ -95,6 +95,7 @@
     <string name="login_expired">Login session expired</string>
     <string name="login_expired_message">Tap to log in again</string>
     <string name="login_expired_relogin">Log in again</string>
+    <string name="x_login_continue">Continue in X</string>
 
     <string name="permission_denied_title">Permission denied</string>
     <string name="permission_denied_message">Log in again to access this page</string>

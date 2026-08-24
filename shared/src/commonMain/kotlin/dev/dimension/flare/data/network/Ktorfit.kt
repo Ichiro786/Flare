@@ -39,6 +39,22 @@ public fun ktorfit(
         )
     }
 
+@HiddenFromObjC
+public fun ktorfit(
+    httpClient: HttpClient,
+    baseUrl: String,
+    json: Json = JSON,
+    extraConverterFactories: List<Converter.Factory> = emptyList(),
+): Ktorfit =
+    de.jensklingenberg.ktorfit.ktorfit {
+        baseUrl(baseUrl)
+        httpClient(httpClient)
+        converterFactories(
+            ResponseConverterFactory(),
+            *extraConverterFactories.toTypedArray(),
+        )
+    }
+
 @OptIn(ExperimentalObjCRefinement::class)
 @HiddenFromObjC
 public fun ktorClient(

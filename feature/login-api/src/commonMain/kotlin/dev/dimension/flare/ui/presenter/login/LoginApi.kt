@@ -51,12 +51,44 @@ public data class LoginAction(
     val enabled: Boolean = true,
 )
 
+public enum class LoginFailureKind {
+    NetworkUnavailable,
+    Timeout,
+    XChallenge,
+    InvalidSession,
+    RateLimited,
+    UnsupportedResponse,
+    UserCancelled,
+}
+
 public data class LoginFlowState(
     val fields: List<LoginField> = emptyList(),
     val actions: List<LoginAction> = emptyList(),
     val loading: Boolean = false,
     val error: String? = null,
+    val failureKind: LoginFailureKind? = null,
 )
+
+public sealed interface LoginResumeResult {
+    public data object NotReady : LoginResumeResult
+
+    public data object Success : LoginResumeResult
+
+    public data class Failure(
+        public val message: String,
+        public val kind: LoginFailureKind? = null,
+    ) : LoginResumeResult
+}
+
+public suspend fun LoginMethodHandler.resumeAndAwait(value: String): LoginResumeResult {
+    resume(value)
+    return state.value.error?.let {
+        LoginResumeResult.Failure(
+            message = it,
+            kind = state.value.failureKind,
+        )
+    } ?: LoginResumeResult.Success
+}
 
 public data class ReloginTarget(
     val accountKey: MicroBlogKey,
